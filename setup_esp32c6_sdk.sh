@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 ESP_IDF_DIR="/home/$USER/esp/esp-idf"
-ESP_IDF_VERSION="v5.2.1"  # Latest stable version that supports ESP32 C6
+ESP_IDF_VERSION="v5.4.1"  # Latest stable version that supports ESP32 C6
 
 # Function to print colored output
 print_status() {
@@ -100,15 +100,15 @@ print_status "Installing ESP-IDF tools for ESP32 C6..."
 
 # Create environment setup script
 print_status "Creating environment setup script..."
-cat > /home/$USER/esp/setup_esp32c6_env.sh << 'EOF'
+cat > /home/$USER/esp/setup_esp32c6_env.sh << EOF
 #!/bin/bash
 # ESP32 C6 Development Environment Setup
 
 export IDF_PATH=/home/$USER/esp/esp-idf
-source $IDF_PATH/export.sh
+source \$IDF_PATH/export.sh
 
 echo "ESP32 C6 development environment ready!"
-echo "ESP-IDF Path: $IDF_PATH"
+echo "ESP-IDF Path: \$IDF_PATH"
 echo "ESP32 C6 toolchain loaded."
 echo ""
 echo "Usage:"

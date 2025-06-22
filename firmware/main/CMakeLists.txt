@@ -41,4 +41,7 @@ idf_component_register(
         # Security
         esp_security
         mbedtls
+
+        # Display component
+        display
 )
