@@ -23,6 +23,7 @@
 #include "driver/gpio.h"
 #include "display_st7789.h"
 #include "lvgl_driver.h"
+#include "lvgl.h"
 
 static const char *TAG = "ESP32-C6-FIRMWARE";
 
@@ -39,6 +40,12 @@ static const char *TAG = "ESP32-C6-FIRMWARE";
 static display_handle_t s_display_handle = {0};
 static bool s_display_initialized = false;
 
+// LVGL objects for system stats display
+static lv_obj_t *stats_label = NULL;
+static lv_obj_t *uptime_label = NULL;
+static lv_obj_t *heap_label = NULL;
+static lv_obj_t *button_label = NULL;
+
 // System statistics
 typedef struct {
     uint32_t uptime_seconds;
@@ -48,6 +55,10 @@ typedef struct {
 } system_stats_t;
 
 static system_stats_t s_stats = {0};
+
+// Function declarations
+static void create_stats_display(void);
+static void update_stats_display(void);
 
 /**
  * @brief Print startup banner with chip information
@@ -131,6 +142,9 @@ static void init_display(void)
     ESP_LOGI(TAG, "Initializing LVGL...");
     lvgl_init();
 
+    // Create LVGL objects for system stats display
+    create_stats_display();
+
     ESP_LOGI(TAG, "LVGL initialized successfully");
 }
 
@@ -202,22 +216,9 @@ static void system_monitor_task(void* pvParameters)
             ESP_LOGI(TAG, "Button presses: %"PRIu32, s_stats.button_presses);
             ESP_LOGI(TAG, "==================");
 
-            // Update display with color indication instead of text
+            // Update display with system stats
             if (s_display_initialized) {
-                display_clear(&s_display_handle, COLOR_BLACK);
-
-                // Show different colors based on system state
-                uint16_t status_color = COLOR_GREEN;
-                if (s_stats.free_heap < 50000) status_color = COLOR_RED;
-                if (s_stats.free_heap < 20000) status_color = COLOR_RED;
-
-                // Fill screen with status color
-                display_fill_rect(&s_display_handle, 0, 0, 320, 172, status_color);
-                vTaskDelay(pdMS_TO_TICKS(1000));
-
-                // Show button press count as colored bars
-                int bar_width = (s_stats.button_presses % 10) * 32;
-                display_fill_rect(&s_display_handle, 0, 0, bar_width, 20, COLOR_WHITE);
+                update_stats_display();
             }
         }
         last_button_state = current_button_state;
@@ -255,6 +256,92 @@ static void system_monitor_task(void* pvParameters)
 }
 
 /**
+ * @brief Create LVGL objects for system stats display
+ */
+static void create_stats_display(void)
+{
+    if (!s_display_initialized) {
+        return;
+    }
+
+    // Create main title label
+    stats_label = lv_label_create(lv_scr_act());
+    lv_label_set_text(stats_label, "ESP32-C6 System Stats");
+    lv_obj_align(stats_label, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_style_text_color(stats_label, lv_color_white(), 0);
+
+    // Create uptime label
+    uptime_label = lv_label_create(lv_scr_act());
+    lv_label_set_text(uptime_label, "Uptime: 0s");
+    lv_obj_align(uptime_label, LV_ALIGN_TOP_LEFT, 10, 40);
+    lv_obj_set_style_text_color(uptime_label, lv_color_white(), 0);
+
+    // Create heap label
+    heap_label = lv_label_create(lv_scr_act());
+    lv_label_set_text(heap_label, "Free Heap: 0 bytes");
+    lv_obj_align(heap_label, LV_ALIGN_TOP_LEFT, 10, 70);
+    lv_obj_set_style_text_color(heap_label, lv_color_white(), 0);
+
+    // Create button press label
+    button_label = lv_label_create(lv_scr_act());
+    lv_label_set_text(button_label, "Button Presses: 0");
+    lv_obj_align(button_label, LV_ALIGN_TOP_LEFT, 10, 100);
+    lv_obj_set_style_text_color(button_label, lv_color_white(), 0);
+
+    ESP_LOGI(TAG, "Stats display created");
+}
+
+/**
+ * @brief Update system stats display
+ */
+static void update_stats_display(void)
+{
+    if (!s_display_initialized || !stats_label) {
+        return;
+    }
+
+    static char uptime_str[32];
+    static char heap_str[64];
+    static char button_str[32];
+
+    // Format uptime
+    uint32_t hours = s_stats.uptime_seconds / 3600;
+    uint32_t minutes = (s_stats.uptime_seconds % 3600) / 60;
+    uint32_t seconds = s_stats.uptime_seconds % 60;
+    
+    if (hours > 0) {
+        snprintf(uptime_str, sizeof(uptime_str), "Uptime: %"PRIu32"h %"PRIu32"m %"PRIu32"s", hours, minutes, seconds);
+    } else if (minutes > 0) {
+        snprintf(uptime_str, sizeof(uptime_str), "Uptime: %"PRIu32"m %"PRIu32"s", minutes, seconds);
+    } else {
+        snprintf(uptime_str, sizeof(uptime_str), "Uptime: %"PRIu32"s", seconds);
+    }
+
+    // Format heap info
+    snprintf(heap_str, sizeof(heap_str), "Free Heap: %"PRIu32" bytes\nMin Heap: %"PRIu32" bytes", 
+             s_stats.free_heap, s_stats.min_free_heap);
+
+    // Format button presses
+    snprintf(button_str, sizeof(button_str), "Button Presses: %"PRIu32, s_stats.button_presses);
+
+    // Update labels
+    lv_label_set_text(uptime_label, uptime_str);
+    lv_label_set_text(heap_label, heap_str);
+    lv_label_set_text(button_label, button_str);
+
+    // Change colors based on system health
+    lv_color_t heap_color = lv_color_white();
+    if (s_stats.free_heap < 20000) {
+        heap_color = lv_color_make(255, 0, 0); // Red for critical
+    } else if (s_stats.free_heap < 50000) {
+        heap_color = lv_color_make(255, 255, 0); // Yellow for warning
+    } else {
+        heap_color = lv_color_make(0, 255, 0); // Green for healthy
+    }
+    lv_obj_set_style_text_color(heap_label, heap_color, 0);
+}
+
+/**
  * @brief Display task - updates display periodically
  */
 static void display_task(void* pvParameters)
@@ -272,10 +359,18 @@ static void display_task(void* pvParameters)
 
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(10); // 10ms interval
+    
+    uint32_t update_counter = 0;
 
     while (1) {
         // Handle LVGL timer tasks
         lvgl_timer_loop();
+
+        // Update display stats every 100 cycles (approximately 1 second)
+        if (++update_counter >= 100) {
+            update_stats_display();
+            update_counter = 0;
+        }
 
         // Reset watchdog for this task
         esp_task_wdt_reset();
@@ -372,8 +467,8 @@ void app_main(void)
     ESP_LOGI(TAG, "  - 0.5s blink: Startup phase");
     ESP_LOGI(TAG, "  - 0.2s blink: Low memory warning");
     if (s_display_initialized) {
-        ESP_LOGI(TAG, "ST7789 Display: Showing 'Hello World' and live system stats");
-        ESP_LOGI(TAG, "Display updates every 10 seconds, button press refreshes stats");
+        ESP_LOGI(TAG, "ST7789 Display: Showing live system stats");
+        ESP_LOGI(TAG, "Display updates every second, button press refreshes stats");
     } else {
         ESP_LOGW(TAG, "Display initialization failed - running without display");
     }

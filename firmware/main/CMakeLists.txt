@@ -44,4 +44,5 @@ idf_component_register(
 
         # Display component
         display
+        lvgl
 )

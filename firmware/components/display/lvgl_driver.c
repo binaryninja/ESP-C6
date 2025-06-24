@@ -90,10 +90,8 @@ void lvgl_init(void)
     indev_drv.read_cb = lvgl_touchpad_read;
     lv_indev_drv_register(&indev_drv);
 
-    // Create simple label for testing
-    lv_obj_t *label = lv_label_create(lv_scr_act());
-    lv_label_set_text(label, "ESP32-C6 LVGL");
-    lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+    // Set black background for better contrast with white text
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), 0);
 
     // Create LVGL tick timer
     const esp_timer_create_args_t lvgl_tick_timer_args = {
