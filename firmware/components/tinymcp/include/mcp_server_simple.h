@@ -8,7 +8,7 @@
  * 
  * Features:
  * - Basic JSON-RPC 2.0 protocol support
- * - Simple UART communication
+ * - Simple communication interface
  * - ESP32-specific tools (echo, display, GPIO, system)
  * - FreeRTOS task integration
  */
@@ -32,11 +32,17 @@ extern "C" {
 
 /* Task Configuration */
 #define MCP_SERVER_TASK_PRIORITY    5
+#ifndef MCP_SERVER_TASK_STACK_SIZE
 #define MCP_SERVER_TASK_STACK_SIZE  4096
+#endif
 
 /* Message Configuration */
+#ifndef MCP_MAX_MESSAGE_SIZE
 #define MCP_MAX_MESSAGE_SIZE        1024
+#endif
+#ifndef MCP_MAX_TOOLS
 #define MCP_MAX_TOOLS               8
+#endif
 #define MCP_RESPONSE_TIMEOUT_MS     5000
 
 /* MCP Server Handle */
@@ -123,7 +129,7 @@ esp_err_t mcp_server_init(const mcp_server_config_t* config,
 /**
  * @brief Start MCP server
  * 
- * Creates task and begins processing MCP messages from UART
+ * Creates task and begins processing MCP messages
  * 
  * @param server_handle Server handle
  * @return ESP_OK on success, error code otherwise
@@ -168,7 +174,7 @@ bool mcp_server_is_running(mcp_server_handle_t server_handle);
  * @brief Process a single line of input
  * 
  * This function can be called from the main firmware to process
- * JSON-RPC messages received via UART
+ * JSON-RPC messages received from various sources
  * 
  * @param server_handle Server handle
  * @param input_line Input line to process

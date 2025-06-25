@@ -21,6 +21,6 @@ idf_component_register(
 # Add component-specific definitions
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     ESP32_MCP_SERVER_SIMPLE=1
-    MCP_MAX_MESSAGE_SIZE=1024
-    MCP_TASK_STACK_SIZE=4096
+    MCP_MAX_MESSAGE_SIZE=4096
+    MCP_TASK_STACK_SIZE=8192
 )

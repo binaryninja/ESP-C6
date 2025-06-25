@@ -29,6 +29,7 @@
 
 extern "C" {
 #include "mcp_server_simple.h"
+#include "mcp_tcp_transport.h"
 #include "wifi_manager.h"
 }
 
@@ -69,9 +70,13 @@ typedef struct {
 
 static system_stats_t s_stats = {0};
 
-// MCP Server handle
+// Simple MCP Server handle
 static mcp_server_handle_t s_mcp_server = NULL;
 static bool s_mcp_server_initialized = false;
+
+// MCP TCP Transport handle
+static mcp_tcp_transport_handle_t s_mcp_transport = NULL;
+static bool s_mcp_transport_initialized = false;
 
 // Wi-Fi Manager
 static bool s_wifi_initialized = false;
@@ -80,6 +85,7 @@ static bool s_wifi_initialized = false;
 static void create_stats_display(void);
 static void update_stats_display(void);
 static void init_mcp_server(void);
+static void init_mcp_transport(void);
 static void init_wifi(void);
 static void wifi_event_callback(wifi_status_t status, uint32_t ip_addr);
 
@@ -468,7 +474,7 @@ static void init_mcp_server(void)
 {
     ESP_LOGI(TAG, "Initializing simple MCP server...");
     
-    // Get default configuration
+    // Get default configuration for simple MCP server
     mcp_server_config_t config;
     esp_err_t ret = mcp_server_get_default_config(&config);
     if (ret != ESP_OK) {
@@ -476,21 +482,20 @@ static void init_mcp_server(void)
         return;
     }
     
-    // Configure server
-    config.task_priority = MCP_SERVER_TASK_PRIORITY;
+    // Configure server tools
     config.enable_echo_tool = true;
     config.enable_display_tool = true;
     config.enable_gpio_tool = true;
     config.enable_system_tool = true;
     
-    // Initialize server
+    // Initialize simple MCP server
     ret = mcp_server_init(&config, &s_mcp_server);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize MCP server: %s", esp_err_to_name(ret));
         return;
     }
     
-    // Start server
+    // Start simple MCP server
     ret = mcp_server_start(s_mcp_server);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start MCP server: %s", esp_err_to_name(ret));
@@ -501,11 +506,46 @@ static void init_mcp_server(void)
     
     s_mcp_server_initialized = true;
     ESP_LOGI(TAG, "Simple MCP server initialized and started successfully");
+    ESP_LOGI(TAG, "MCP server ready for JSON-RPC communication");
     ESP_LOGI(TAG, "MCP Tools available:");
     ESP_LOGI(TAG, "  - echo: Echo back input parameters");
     ESP_LOGI(TAG, "  - display_control: Control ST7789 display");
     ESP_LOGI(TAG, "  - gpio_control: Control LED and read button");
     ESP_LOGI(TAG, "  - system_info: Get system information");
+}
+
+/**
+ * @brief Initialize MCP TCP transport
+ */
+static void init_mcp_transport(void)
+{
+    ESP_LOGI(TAG, "Initializing MCP TCP transport...");
+    
+    // Get default TCP transport configuration
+    mcp_tcp_transport_config_t config = MCP_TCP_TRANSPORT_CONFIG_DEFAULT();
+    
+    // Initialize TCP transport
+    esp_err_t ret = mcp_tcp_transport_init(&config, &s_mcp_transport);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize MCP TCP transport: %s", esp_err_to_name(ret));
+        return;
+    }
+    
+    // Associate MCP server with transport
+    if (s_mcp_server_initialized) {
+        ret = mcp_tcp_transport_set_mcp_server(s_mcp_transport, s_mcp_server);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to associate MCP server with transport: %s", esp_err_to_name(ret));
+            mcp_tcp_transport_deinit(s_mcp_transport);
+            s_mcp_transport = NULL;
+            return;
+        }
+    }
+    
+    s_mcp_transport_initialized = true;
+    ESP_LOGI(TAG, "MCP TCP transport initialized successfully");
+    ESP_LOGI(TAG, "Transport will start automatically when WiFi connects");
+    ESP_LOGI(TAG, "MCP server will be available on port 8080");
 }
 
 /**
@@ -533,6 +573,16 @@ static void wifi_event_callback(wifi_status_t status, uint32_t ip_addr)
             if (wifi_manager_get_stats(&wifi_stats) == ESP_OK) {
                 s_stats.wifi_rssi = wifi_stats.rssi;
             }
+            
+            // Start MCP TCP transport when WiFi connects
+            if (s_mcp_transport_initialized && s_mcp_transport) {
+                esp_err_t ret = mcp_tcp_transport_start(s_mcp_transport);
+                if (ret == ESP_OK) {
+                    ESP_LOGI(TAG, "MCP TCP server started on %s:8080", s_stats.wifi_ip);
+                } else {
+                    ESP_LOGE(TAG, "Failed to start MCP TCP server: %s", esp_err_to_name(ret));
+                }
+            }
             break;
             
         case WIFI_STATUS_DISCONNECTED:
@@ -541,6 +591,16 @@ static void wifi_event_callback(wifi_status_t status, uint32_t ip_addr)
             strcpy(s_stats.wifi_ip, "0.0.0.0");
             s_stats.wifi_connected = false;
             s_stats.wifi_rssi = 0;
+            
+            // Stop MCP TCP transport when WiFi disconnects
+            if (s_mcp_transport_initialized && s_mcp_transport) {
+                esp_err_t ret = mcp_tcp_transport_stop(s_mcp_transport);
+                if (ret == ESP_OK) {
+                    ESP_LOGI(TAG, "MCP TCP server stopped");
+                } else {
+                    ESP_LOGE(TAG, "Failed to stop MCP TCP server: %s", esp_err_to_name(ret));
+                }
+            }
             break;
             
         case WIFI_STATUS_FAILED:
@@ -549,6 +609,12 @@ static void wifi_event_callback(wifi_status_t status, uint32_t ip_addr)
             strcpy(s_stats.wifi_ip, "0.0.0.0");
             s_stats.wifi_connected = false;
             s_stats.wifi_rssi = 0;
+            
+            // Stop MCP TCP transport on WiFi failure
+            if (s_mcp_transport_initialized && s_mcp_transport) {
+                mcp_tcp_transport_stop(s_mcp_transport);
+                ESP_LOGI(TAG, "MCP TCP server stopped due to WiFi failure");
+            }
             break;
             
         case WIFI_STATUS_RECONNECTING:
@@ -622,6 +688,9 @@ extern "C" void app_main(void)
     // Initialize MCP server
     init_mcp_server();
 
+    // Initialize MCP TCP transport
+    init_mcp_transport();
+
     // Create and start tasks
     ESP_LOGI(TAG, "Starting application tasks...");
 
@@ -690,10 +759,15 @@ extern "C" void app_main(void)
     }
     if (s_mcp_server_initialized) {
         ESP_LOGI(TAG, "Simple MCP Server: Ready for JSON-RPC commands");
-        ESP_LOGI(TAG, "Send JSON-RPC requests to control display, GPIO, and get system info");
         ESP_LOGI(TAG, "Example: {\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1}");
     } else {
-        ESP_LOGW(TAG, "MCP server initialization failed - running without MCP support");
+        ESP_LOGW(TAG, "Simple MCP server initialization failed - running without MCP support");
+    }
+    if (s_mcp_transport_initialized) {
+        ESP_LOGI(TAG, "MCP TCP Transport: Ready to start on WiFi connection");
+        ESP_LOGI(TAG, "Will be available at WiFi_IP:8080 when connected");
+    } else {
+        ESP_LOGW(TAG, "MCP TCP transport initialization failed - running without TCP support");
     }
 
     // Main task can exit, FreeRTOS will continue running the created tasks

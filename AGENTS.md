@@ -199,9 +199,9 @@ The project now includes a comprehensive plan to integrate TinyMCP (Model Contex
 
 ### Integration Challenges Identified ❌
 1. **Language Mismatch**: Firmware is C, TinyMCP is C++
-2. **Platform Differences**: Desktop vs embedded constraints
-3. **Transport Layer**: stdio vs UART/USB/WiFi/BLE
-4. **Memory Constraints**: Embedded heap vs desktop memory
+3. **Platform Differences**: Desktop vs embedded constraints
+4. **Transport Layer**: stdio vs WiFi/BLE
+5. **Memory Constraints**: Embedded heap vs desktop memory
 5. **Dependencies**: jsoncpp needs ESP32-compatible replacement
 
 ### Phase-by-Phase Implementation Plan
@@ -366,7 +366,7 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES esp_system esp_event esp_timer log nvs_flash
              esp_wifi esp_netif lwip esp_http_server esp_https_ota
-             bt openthread ieee802154 esp_driver_gpio esp_driver_uart
+             bt openthread ieee802154 esp_driver_gpio
              esp_driver_spi esp_driver_i2c esp_adc esp_driver_ledc
              esp_pm ulp spi_flash esp_security mbedtls
              display lvgl tinymcp  # TinyMCP component integrated
@@ -427,7 +427,7 @@ idf_component_register(
 - **Component Integration**: ✅ Complete tinymcp component with C implementation
 - **Build System**: ✅ Full ESP-IDF integration with proper dependencies
 - **Partition Table**: ✅ Fixed 4MB flash configuration with optimized single-OTA layout
-- **Transport Foundation**: ✅ JSON-RPC protocol handler ready for UART/USB CDC
+- **Transport Foundation**: ✅ JSON-RPC protocol handler ready for WiFi TCP
 - **Tool Framework**: ✅ 4 MCP tools registered and available
 - **C++ Compatibility**: ✅ Fixed linkage issues with extern "C" declarations
 - **Runtime Verification**: ✅ Successfully deployed and running (55a9659 commit)
@@ -445,7 +445,7 @@ idf_component_register(
 - **Runtime Verification**: ✅ Successfully building and ready for deployment
 
 ### What Needs Implementation 🔄 (Phase 2 Ready)
-- **Transport Layer**: Complete UART/USB CDC communication for JSON-RPC commands
+- **Transport Layer**: Complete WiFi TCP communication for JSON-RPC commands
 - **Tool Enhancement**: Make MCP tools actually control hardware (currently stubs)
 - **Client Testing**: Full client-server validation using dev_monitor.sh dual mode
 - **WiFi Transport**: Add WiFi-based MCP communication
@@ -539,9 +539,8 @@ idf.py -p /dev/ttyACM0 flash monitor
 - **IMPLEMENT** proper task priorities and stack sizes
 
 #### Transport Layer Priority
-1. **UART/USB CDC** - Primary interface for development
-2. **WiFi TCP** - For remote access and web integration
-3. **BLE** - For mobile app connectivity (optional)
+1. **WiFi TCP** - Primary interface for development and remote access
+2. **BLE** - For mobile app connectivity (optional)
 
 ## FINAL NOTE TO FUTURE AGENTS
 
@@ -577,16 +576,15 @@ The ESP-IDF framework is mature and comprehensive. There's almost always an exis
 ### TinyMCP Integration Principles
 **PHASE 1 COMPLETE - CONTINUE WITH PHASE 2!**
 
-✅ **Phase 1 Achievements (Latest Commit):**
+✅ **Phase 1 Achievements (LatestCommit 55a9659):**
 1. **Component Structure**: ✅ Complete tinymcp component with proper build system
 2. **C Implementation**: ✅ Efficient C-based MCP server for embedded constraints
 3. **Tool Framework**: ✅ 4 tools registered (echo, display_control, gpio_control, system_info)
 4. **System Integration**: ✅ FreeRTOS task with proper priorities, maintained functionality
-5. **Partition Table**: ✅ Fixed 4MB flash configuration with single-OTA optimization
-6. **Build Success**: ✅ 1.12MB firmware fits in 1.5MB partition with 28% free space
+5. **Runtime Success**: ✅ 385KB free heap, stable operation verified
 
 🔄 **Phase 2 Next Steps:**
-1. **Transport Layer**: Complete UART/JSON-RPC communication implementation
+1. **Transport Layer**: Complete WiFi TCP/JSON-RPC communication implementation
 2. **Tool Enhancement**: Make tools actually control hardware (currently stubs)
 3. **Client Testing**: Use `./dev_monitor.sh dual` for comprehensive testing
 4. **Error Handling**: Robust validation and error responses

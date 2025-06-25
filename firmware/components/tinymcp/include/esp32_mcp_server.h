@@ -7,7 +7,7 @@
  * 
  * Features:
  * - JSON-RPC 2.0 protocol support
- * - UART/USB CDC transport layer
+ * - WiFi TCP and BLE transport layers
  * - ESP32-specific MCP tools (Display, GPIO, System)
  * - FreeRTOS task integration
  * - ESP-IDF component compatibility
@@ -33,14 +33,22 @@ extern "C" {
 #define ESP32_MCP_PROTOCOL_VERSION      "2024-11-05"
 
 /* Task Configuration */
+#ifndef MCP_SERVER_TASK_PRIORITY
 #define MCP_SERVER_TASK_PRIORITY        5
+#endif
+#ifndef MCP_SERVER_TASK_STACK_SIZE
 #define MCP_SERVER_TASK_STACK_SIZE      8192
+#endif
 #define MCP_TRANSPORT_TASK_PRIORITY     4
 #define MCP_TRANSPORT_TASK_STACK_SIZE   4096
 
 /* Message Configuration */
+#ifndef MCP_MAX_MESSAGE_SIZE
 #define MCP_MAX_MESSAGE_SIZE            2048
+#endif
+#ifndef MCP_MAX_TOOLS
 #define MCP_MAX_TOOLS                   16
+#endif
 #define MCP_MAX_REQUESTS                8
 #define MCP_TRANSPORT_BUFFER_SIZE       1024
 #define MCP_RESPONSE_TIMEOUT_MS         5000
@@ -48,33 +56,10 @@ extern "C" {
 /* MCP Server Handle */
 typedef struct esp32_mcp_server* esp32_mcp_server_handle_t;
 
-/* MCP Tool Types */
-typedef enum {
-    MCP_TOOL_TYPE_DISPLAY = 0,
-    MCP_TOOL_TYPE_GPIO,
-    MCP_TOOL_TYPE_SYSTEM,
-    MCP_TOOL_TYPE_STATUS,
-    MCP_TOOL_TYPE_MAX
-} mcp_tool_type_t;
+/* Include transport types */
+#include "esp32_transport.h"
 
-/* MCP Transport Types */
-typedef enum {
-    MCP_TRANSPORT_UART = 0,
-    MCP_TRANSPORT_USB_CDC,
-    MCP_TRANSPORT_WIFI_TCP,
-    MCP_TRANSPORT_BLE,
-    MCP_TRANSPORT_MAX
-} mcp_transport_type_t;
-
-/* MCP Message Types */
-typedef enum {
-    MCP_MSG_TYPE_REQUEST = 0,
-    MCP_MSG_TYPE_RESPONSE,
-    MCP_MSG_TYPE_NOTIFICATION,
-    MCP_MSG_TYPE_ERROR
-} mcp_message_type_t;
-
-/* MCP Server Configuration */
+/* ESP32 MCP Server Configuration */
 typedef struct {
     /* Basic Configuration */
     const char* server_name;
@@ -83,23 +68,21 @@ typedef struct {
     
     /* Transport Configuration */
     mcp_transport_type_t transport_type;
-    uint32_t transport_baudrate;    // For UART transport
     int transport_port;             // For TCP transport
-    const char* transport_device;   // Device path for UART
+    const char* transport_device;   // Device path or address
     
     /* Task Configuration */
     uint32_t server_task_stack_size;
-    uint32_t transport_task_stack_size;
     UBaseType_t server_task_priority;
     UBaseType_t transport_task_priority;
     
     /* Message Configuration */
     uint32_t max_message_size;
-    uint32_t max_concurrent_requests;
+    uint32_t response_buffer_size;
     uint32_t response_timeout_ms;
-    uint32_t transport_buffer_size;
     
-    /* Feature Flags */
+    /* Tool Feature Flags */
+    bool enable_echo_tool;
     bool enable_display_tool;
     bool enable_gpio_tool;
     bool enable_system_tool;
@@ -107,38 +90,18 @@ typedef struct {
     
 } esp32_mcp_server_config_t;
 
-/* MCP Tool Definition */
+/* ESP32 MCP Server Statistics */
 typedef struct {
-    const char* name;
-    const char* description;
-    const char* input_schema_json;
-    mcp_tool_type_t type;
-    esp_err_t (*execute)(const char* params_json, char* result_json, size_t result_size);
-} mcp_tool_t;
-
-/* MCP Message Structure */
-typedef struct {
-    mcp_message_type_t type;
-    uint32_t id;
-    const char* method;
-    const char* params_json;
-    char* result_json;
-    size_t result_size;
-    esp_err_t error_code;
-    int64_t timestamp;
-} mcp_message_t;
-
-/* MCP Server Statistics */
-typedef struct {
-    uint32_t messages_received;
-    uint32_t messages_sent;
-    uint32_t requests_processed;
-    uint32_t errors_count;
-    uint32_t tools_executed;
     uint64_t uptime_ms;
-    uint32_t free_heap;
-    uint32_t min_free_heap;
-} mcp_server_stats_t;
+    uint32_t requests_processed;
+    uint32_t responses_sent;
+    uint32_t errors;
+    uint32_t transport_errors;
+    uint32_t connection_count;
+    uint32_t bytes_received;
+    uint32_t bytes_sent;
+    bool connected;
+} esp32_mcp_server_stats_t;
 
 /**
  * @brief Get default MCP server configuration
@@ -185,16 +148,6 @@ esp_err_t esp32_mcp_server_stop(esp32_mcp_server_handle_t server_handle);
 esp_err_t esp32_mcp_server_deinit(esp32_mcp_server_handle_t server_handle);
 
 /**
- * @brief Register custom MCP tool
- * 
- * @param server_handle Server handle
- * @param tool Tool definition
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t esp32_mcp_server_register_tool(esp32_mcp_server_handle_t server_handle,
-                                         const mcp_tool_t* tool);
-
-/**
  * @brief Get server statistics
  * 
  * @param server_handle Server handle
@@ -202,19 +155,7 @@ esp_err_t esp32_mcp_server_register_tool(esp32_mcp_server_handle_t server_handle
  * @return ESP_OK on success, error code otherwise
  */
 esp_err_t esp32_mcp_server_get_stats(esp32_mcp_server_handle_t server_handle,
-                                     mcp_server_stats_t* stats);
-
-/**
- * @brief Send notification to client
- * 
- * @param server_handle Server handle
- * @param method Notification method name
- * @param params_json Parameters as JSON string
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t esp32_mcp_server_send_notification(esp32_mcp_server_handle_t server_handle,
-                                             const char* method,
-                                             const char* params_json);
+                                     esp32_mcp_server_stats_t* stats);
 
 /**
  * @brief Check if server is running
@@ -223,58 +164,6 @@ esp_err_t esp32_mcp_server_send_notification(esp32_mcp_server_handle_t server_ha
  * @return true if running, false otherwise
  */
 bool esp32_mcp_server_is_running(esp32_mcp_server_handle_t server_handle);
-
-/**
- * @brief Get server configuration
- * 
- * @param server_handle Server handle
- * @param config Pointer to store configuration
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t esp32_mcp_server_get_config(esp32_mcp_server_handle_t server_handle,
-                                      esp32_mcp_server_config_t* config);
-
-/* MCP Tool Execution Functions - Implemented in separate files */
-
-/**
- * @brief Execute display tool
- * 
- * @param params_json Tool parameters as JSON
- * @param result_json Buffer for result JSON
- * @param result_size Size of result buffer
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t mcp_tool_display_execute(const char* params_json, char* result_json, size_t result_size);
-
-/**
- * @brief Execute GPIO tool
- * 
- * @param params_json Tool parameters as JSON
- * @param result_json Buffer for result JSON
- * @param result_size Size of result buffer
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t mcp_tool_gpio_execute(const char* params_json, char* result_json, size_t result_size);
-
-/**
- * @brief Execute system tool
- * 
- * @param params_json Tool parameters as JSON
- * @param result_json Buffer for result JSON
- * @param result_size Size of result buffer
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t mcp_tool_system_execute(const char* params_json, char* result_json, size_t result_size);
-
-/**
- * @brief Execute status tool
- * 
- * @param params_json Tool parameters as JSON
- * @param result_json Buffer for result JSON
- * @param result_size Size of result buffer
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t mcp_tool_status_execute(const char* params_json, char* result_json, size_t result_size);
 
 #ifdef __cplusplus
 }

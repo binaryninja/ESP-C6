@@ -27,6 +27,10 @@ WEB_SERVER_IP="192.168.1.100"  # Will be ESP32-C6 IP when WiFi is implemented
 WEB_SERVER_PORT="80"
 HTTP_CLIENT_DELAY="5"  # seconds between client requests
 
+# MCP TCP client configuration
+MCP_TCP_PORT="8080"
+MCP_CLIENT_SCRIPT="$SCRIPT_DIR/mcp_tcp_client.py"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -240,6 +244,133 @@ simulate_http_client() {
     done
 
     print_client "Client simulation completed. Total requests: $request_count"
+}
+
+# MCP TCP client functions for testing ESP32-C6 MCP server
+run_mcp_tcp_client() {
+    local test_duration=${1:-60}  # Default 60 seconds
+    local esp32_ip=${2:-"auto"}   # Auto-discover or use provided IP
+
+    print_client "Starting MCP TCP client testing"
+    print_client "Duration: ${test_duration} seconds"
+    print_client "Target: ESP32-C6 MCP server on port $MCP_TCP_PORT"
+
+    # Check if MCP client script exists
+    if [ ! -f "$MCP_CLIENT_SCRIPT" ]; then
+        print_error "MCP client script not found: $MCP_CLIENT_SCRIPT"
+        return 1
+    fi
+
+    # Auto-discover ESP32 IP if needed
+    if [ "$esp32_ip" = "auto" ]; then
+        print_client "Auto-discovering ESP32-C6 IP address..."
+        esp32_ip=$(python3 "$SCRIPT_DIR/get_esp32_ip.py" 2>/dev/null || echo "")
+
+        if [ -z "$esp32_ip" ]; then
+            print_warning "Could not auto-discover ESP32-C6 IP"
+            print_client "Using default IP: 192.168.1.100"
+            esp32_ip="192.168.1.100"
+        else
+            print_success "Found ESP32-C6 at IP: $esp32_ip"
+        fi
+    fi
+
+    print_client "Connecting to ESP32-C6 at $esp32_ip:$MCP_TCP_PORT"
+
+    # Run MCP client with timeout
+    timeout "$test_duration" python3 "$MCP_CLIENT_SCRIPT" "$esp32_ip" --test 2>&1 | while IFS= read -r line; do
+        print_client "$line"
+        echo "[$(timestamp)] [MCP-CLIENT] $line" >> "$CLIENT_LOG_FILE"
+        echo "[$(timestamp)] [MCP-CLIENT] $line" >> "$COMBINED_LOG_FILE"
+    done
+
+    local exit_code=$?
+    if [ $exit_code -eq 124 ]; then
+        print_client "MCP client testing completed (timeout reached)"
+    elif [ $exit_code -eq 0 ]; then
+        print_success "MCP client testing completed successfully"
+    else
+        print_error "MCP client testing failed with exit code: $exit_code"
+    fi
+
+    return $exit_code
+}
+
+# Interactive MCP TCP client
+run_mcp_interactive_client() {
+    local esp32_ip=${1:-"auto"}
+
+    print_client "Starting interactive MCP TCP client"
+
+    # Check if MCP client script exists
+    if [ ! -f "$MCP_CLIENT_SCRIPT" ]; then
+        print_error "MCP client script not found: $MCP_CLIENT_SCRIPT"
+        return 1
+    fi
+
+    # Auto-discover ESP32 IP if needed
+    if [ "$esp32_ip" = "auto" ]; then
+        print_client "Auto-discovering ESP32-C6 IP address..."
+        esp32_ip=$(python3 "$SCRIPT_DIR/get_esp32_ip.py" 2>/dev/null || echo "")
+
+        if [ -z "$esp32_ip" ]; then
+            print_warning "Could not auto-discover ESP32-C6 IP"
+            print_client "Please specify IP manually or check connection"
+            return 1
+        else
+            print_success "Found ESP32-C6 at IP: $esp32_ip"
+        fi
+    fi
+
+    print_client "Starting interactive session with ESP32-C6 at $esp32_ip:$MCP_TCP_PORT"
+    print_client "Use Ctrl+C to exit"
+
+    # Run interactive MCP client
+    python3 "$MCP_CLIENT_SCRIPT" "$esp32_ip"
+}
+
+# Dual monitoring with MCP client
+run_mcp_dual_monitor() {
+    local duration=${1:-60}
+    local esp32_ip=${2:-"auto"}
+
+    print_status "Starting dual monitor with MCP TCP client"
+    print_status "Duration: ${duration} seconds"
+
+    # Start server monitoring in background
+    monitor_with_logging "$duration" &
+    local server_pid=$!
+
+    # Small delay to let server monitoring start
+    sleep 2
+
+    # Start MCP client testing
+    run_mcp_tcp_client "$duration" "$esp32_ip" &
+    local client_pid=$!
+
+    print_status "Dual monitoring active - Server PID: $server_pid, MCP Client PID: $client_pid"
+    print_warning "Press Ctrl+C to stop both monitors"
+
+    # Wait for both processes or handle interrupt
+    trap 'kill $server_pid $client_pid 2>/dev/null; print_status "Dual monitoring stopped by user"; exit 0' INT
+
+    # Wait for processes to complete
+    wait $client_pid
+    local client_exit=$?
+
+    kill $server_pid 2>/dev/null
+    wait $server_pid 2>/dev/null
+
+    print_status "Dual monitoring completed"
+
+    if [ $client_exit -eq 0 ] || [ $client_exit -eq 124 ]; then
+        print_success "MCP client testing completed successfully"
+    else
+        print_error "MCP client testing had issues (exit code: $client_exit)"
+    fi
+
+    # Show log summary
+    show_log_summary
 }
 
 # Function to monitor serial output with enhanced logging
@@ -523,8 +654,10 @@ show_usage() {
     echo "  monitor       - Monitor serial output only"
     echo "  monitor-reset - Monitor with device reset [duration_seconds]"
     echo "  reset         - Reset ESP32-C6 device only"
-    echo "  client        - Run client simulator only [duration_seconds]"
+    echo "  client        - Run HTTP client simulator only [duration_seconds]"
+    echo "  mcp-client    - Run MCP TCP client tests [duration_seconds] [esp32_ip]"
     echo "  dual          - Dual monitoring mode (server + client) [duration_seconds]"
+    echo "  mcp-dual      - Dual monitoring with MCP client [duration_seconds] [esp32_ip]"
     echo "  logs          - Tail log files [client|server|combined]"
     echo ""
     echo "Testing Commands:"
@@ -540,7 +673,9 @@ show_usage() {
     echo ""
     echo "Examples:"
     echo "  $0 dual 120              # Dual monitor for 2 minutes"
-    echo "  $0 client 60             # Client simulation for 1 minute"
+    echo "  $0 client 60             # HTTP client simulation for 1 minute"
+    echo "  $0 mcp-client 120        # MCP TCP client tests for 2 minutes"
+    echo "  $0 mcp-dual 180          # Dual monitor with MCP client for 3 minutes"
     echo "  $0 flash-test            # Flash and test"
     echo "  $0 logs combined         # Tail combined logs"
     echo ""
@@ -550,6 +685,8 @@ show_usage() {
     echo "  Device Port:      $DEVICE_PORT"
     echo "  Log Directory:    $LOG_DIR"
     echo "  Future Web IP:    $WEB_SERVER_IP:$WEB_SERVER_PORT"
+    echo "  MCP TCP Port:     $MCP_TCP_PORT"
+    echo "  MCP Client:       $MCP_CLIENT_SCRIPT"
 }
 
 # Function to initialize development environment
@@ -634,9 +771,27 @@ main() {
             simulate_http_client "$option"
             ;;
 
+        "mcp-client")
+            local duration=${2:-60}
+            local esp32_ip=${3:-"auto"}
+            run_mcp_tcp_client "$duration" "$esp32_ip"
+            ;;
+
+        "mcp-interactive")
+            local esp32_ip=${2:-"auto"}
+            run_mcp_interactive_client "$esp32_ip"
+            ;;
+
         "dual")
             check_device
             dual_monitor "$option"
+            ;;
+
+        "mcp-dual")
+            local duration=${2:-60}
+            local esp32_ip=${3:-"auto"}
+            check_device
+            run_mcp_dual_monitor "$duration" "$esp32_ip"
             ;;
 
         "test")

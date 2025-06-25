@@ -25,7 +25,6 @@ idf_component_register(
 
         # Essential drivers
         esp_driver_gpio
-        esp_driver_uart
         esp_driver_spi
         esp_driver_i2c
         esp_adc
@@ -51,4 +50,7 @@ idf_component_register(
 
         # Wi-Fi Manager component
         wifi_manager
+
+        # MCP TCP Transport component
+        mcp_tcp_transport
 )
