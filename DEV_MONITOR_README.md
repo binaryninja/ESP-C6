@@ -8,6 +8,7 @@ The `dev_monitor.sh` script is an enhanced development tool designed for ESP32-C
 
 ### ✅ **Working Features**
 - **Build & Flash**: Automated firmware compilation and device flashing
+- **Partition Table**: ✅ Fixed 4MB flash with optimized single-OTA layout
 - **Dual Monitoring**: Simultaneous client simulation and server monitoring
 - **Correlated Logging**: Timestamped logs with client/server correlation
 - **Client Simulation**: HTTP request stubs for future webserver integration

@@ -10,6 +10,7 @@ This project demonstrates a complete ESP32-C6 firmware implementation with **wor
 - ✅ **Interactive Updates** - Button press refreshes display content
 - ✅ **Color Text Rendering** - Multi-color text with 8×16 pixel font
 - ✅ **Status LED Indicators** - Visual system health feedback
+- ✅ **Optimized Flash Layout** - 4MB partition table with single OTA
 - ✅ **Professional Code Quality** - Production-ready firmware architecture
 
 ---
@@ -45,7 +46,20 @@ This project demonstrates a complete ESP32-C6 firmware implementation with **wor
 
 ### Wiring Diagram
 ```
-??
+ESP32-C6 Pin    ST7789 Display    Function
+============    ==============    ========
+GPIO6       →   MOSI (SDA)        SPI Data
+GPIO7       →   SCLK (SCL)        SPI Clock
+GPIO14      →   CS                Chip Select
+GPIO15      →   DC (RS)           Data/Command
+GPIO21      →   RST               Reset
+GPIO22      →   BL                Backlight
+3V3         →   VCC               Power (3.3V)
+GND         →   GND               Ground
+
+Optional:
+GPIO8       →   LED               Status LED
+GPIO9       →   BUTTON            User Input
 ```
 
 ### Wire Color Suggestions
@@ -174,7 +188,7 @@ ESP-C6/
 └── firmware/                 # ESP-IDF project root
     ├── CMakeLists.txt        # Main build configuration
     ├── sdkconfig.defaults    # Default project configuration
-    ├── partitions.csv        # Flash partition table
+    ├── partitions.csv        # Optimized 4MB flash partition table
     ├── main/
     │   ├── CMakeLists.txt    # Main component build config
     │   └── firmware.c        # Main application code (380+ lines)
@@ -213,7 +227,7 @@ display_clear(&display_handle, COLOR_BLACK);
 display_backlight_set(&display_handle, true);
 
 // Draw text
-display_printf(&display_handle, x, y, COLOR_WHITE, COLOR_BLACK,
+display_printf(&display_handle, x, y, COLOR_WHITE, COLOR_BLACK, 
                "Hello World!");
 
 // Draw shapes
@@ -236,10 +250,10 @@ uint16_t orange = display_rgb888_to_rgb565(255, 165, 0);
 ## 📊 Performance Metrics
 
 ### Build Statistics
-- **Firmware Size**: 225KB (78% free space remaining)
+- **Firmware Size**: 1.12MB (28% free space in 1.5MB partition)
 - **Bootloader**: 22KB
 - **RAM Usage**: ~180KB runtime
-- **Flash Usage**: ~350KB total
+- **Flash Usage**: Optimized 4MB partition table
 
 ### Runtime Performance
 - **Boot Time**: 2-3 seconds to display initialization
@@ -283,6 +297,7 @@ uint16_t orange = display_rgb888_to_rgb565(255, 165, 0);
 1. **ESP-IDF version** - Ensure v5.4.1 is installed
 2. **Target setting** - Run `idf.py set-target esp32c6`
 3. **Clean build** - Try `./esp_flash.sh clean` then rebuild
+4. **Partition table** - ✅ Fixed: 4MB flash with optimized single-OTA layout
 
 ---
 
@@ -359,6 +374,7 @@ uint16_t orange = display_rgb888_to_rgb565(255, 165, 0);
 ### Technical Achievements
 - ✅ **Professional Architecture**: Modular component design
 - ✅ **ESP-IDF Best Practices**: Uses official LCD components
+- ✅ **Optimized Flash Layout**: 4MB partition table with single OTA
 - ✅ **Production Ready**: Comprehensive error handling
 - ✅ **Full Documentation**: Complete setup and usage guides
 - ✅ **Developer Friendly**: Convenience scripts and clear APIs
@@ -427,7 +443,8 @@ This project is open source and available under the **MIT License**.
 
 - **Last Updated**: December 2024
 - **ESP-IDF Version**: v5.4.1 LTS
-- **Target Platform**: ESP32-C6
+- **Target Platform**: ESP32-C6 (4MB Flash)
+- **Partition Table**: ✅ Optimized single-OTA layout
 - **Display Support**: ST7789 TFT (172×320)
 - **Features**: Complete display functionality with real-time updates
 

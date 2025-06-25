@@ -1,10 +1,15 @@
-# ESP32-C6 Partition Table
+# ESP32-C6 Optimized Partition Table (4MB Flash, Single OTA)
 # Name,   Type, SubType, Offset,  Size,    Flags
-# Note: if you have increased the bootloader size, make sure to update the offsets to avoid overlap
+# Note: Optimized for 4MB flash with single OTA partition to maximize app space
+
+# System partitions (required)
 nvs,      data, nvs,     0x9000,  0x6000,
 phy_init, data, phy,     0xf000,  0x1000,
-factory,  app,  factory, 0x10000, 0x100000,
-ota_0,    app,  ota_0,   0x110000, 0x100000,
-ota_1,    app,  ota_1,   0x210000, 0x100000,
+
+# Application partitions
+factory,  app,  factory, 0x10000, 0x180000,
+ota_0,    app,  ota_0,   0x190000, 0x180000,
 ota_data, data, ota,     0x310000, 0x2000,
-storage,  data, spiffs,  0x312000, 0x100000,
+
+# Storage partition (remaining space)
+storage,  data, spiffs,  0x320000, 0xE0000,

@@ -48,4 +48,7 @@ idf_component_register(
 
         # TinyMCP component
         tinymcp
+
+        # Wi-Fi Manager component
+        wifi_manager
 )

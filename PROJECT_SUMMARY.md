@@ -18,6 +18,7 @@ Successfully implemented ST7789 TFT display support for ESP32-C6, creating a com
 - **Memory Management**: Efficient DMA-based transfers
 - **Error Handling**: Comprehensive error checking and recovery
 - **Threading**: Multi-task architecture with FreeRTOS
+- **Partition Table**: ✅ Fixed 4MB flash with optimized single-OTA layout
 
 ### ✅ Display Features Implemented
 1. **Text Rendering System**
@@ -79,7 +80,7 @@ components/display/
 ### Performance Metrics
 - **Boot Time**: ~2-3 seconds to full display initialization
 - **Memory Usage**: 
-  - Flash: ~225KB firmware size
+  - Flash: ~1.12MB firmware size (fits in 1.5MB partition with 28% free)
   - RAM: ~180KB runtime usage
 - **Display Performance**:
   - Full screen clear: ~50ms
@@ -123,20 +124,24 @@ components/display/
 - **Target**: ESP32-C6
 - **Toolchain**: riscv32-esp-elf-gcc
 - **Build System**: CMake + Ninja
-- **Flash Size**: 2MB
-- **Partition Usage**: 78% free space remaining
+- **Flash Size**: 4MB
+- **Partition Usage**: 1.5MB app partitions with 28% free space
 
-### Flash Layout
-- **Bootloader**: 0x0000 (22KB)
-- **Partition Table**: 0x8000 (3KB)
-- **Application**: 0x10000 (225KB)
-- **Free Space**: ~825KB available for future features
+### Flash Layout (Optimized 4MB Single-OTA)
+- **Bootloader**: 0x0000 (32KB)
+- **Partition Table**: 0x8000 (4KB)
+- **NVS**: 0x9000 (24KB)
+- **PHY Init**: 0xF000 (4KB)
+- **Factory App**: 0x10000 (1.5MB)
+- **OTA_0 App**: 0x190000 (1.5MB)
+- **OTA Data**: 0x310000 (8KB)
+- **Storage**: 0x320000 (896KB)
 
 ### Build Output
 ```
-firmware.bin binary size 0x37260 bytes. 
-Smallest app partition is 0x100000 bytes. 
-0xc8da0 bytes (78%) free.
+firmware.bin binary size 0x1143a0 bytes. 
+Smallest app partition is 0x180000 bytes. 
+0x6bc60 bytes (28%) free.
 ```
 
 ## Documentation Created
@@ -220,6 +225,7 @@ Smallest app partition is 0x100000 bytes.
 4. **System Monitoring**: Comprehensive status tracking
 5. **Documentation**: Complete setup and usage documentation
 6. **Testing**: Hardware and software validation successful
+7. **Partition Table**: ✅ Fixed 4MB flash with optimized single-OTA layout
 
 ### 🎯 Ready for Next Phase
 The project provides a solid foundation for expanding into:
@@ -237,6 +243,7 @@ The project provides a solid foundation for expanding into:
 - **Professional code quality** with comprehensive documentation
 - **Modular architecture** enabling easy expansion
 - **Performance targets met** for display refresh and responsiveness
+- **Partition table optimized** for 4MB flash with single OTA
 
 ### User Experience
 - **Clear visual feedback** through multi-color display
