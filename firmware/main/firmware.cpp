@@ -1,9 +1,11 @@
 /**
- * @file firmware.c
- * @brief ESP32-C6 Basic Firmware Example with Display
+ * @file firmware.cpp
+ * @brief ESP32-C6 Comprehensive Firmware with TinyMCP Integration
  *
- * A simple working firmware that demonstrates basic ESP32-C6 functionality
- * including ST7789 display support showing "Hello World"
+ * Advanced firmware demonstrating ESP32-C6 functionality including:
+ * - ST7789 display support with "Hello World" 
+ * - TinyMCP (Model Context Protocol) server
+ * - Remote control via JSON-RPC commands
  */
 
 #include <stdio.h>
@@ -25,6 +27,10 @@
 #include "lvgl_driver.h"
 #include "lvgl.h"
 
+extern "C" {
+#include "mcp_server_simple.h"
+}
+
 static const char *TAG = "ESP32-C6-FIRMWARE";
 
 // GPIO configuration
@@ -35,6 +41,7 @@ static const char *TAG = "ESP32-C6-FIRMWARE";
 #define STATUS_LED_TASK_PRIORITY    2
 #define SYSTEM_MONITOR_TASK_PRIORITY 3
 #define DISPLAY_TASK_PRIORITY       4
+#define MCP_SERVER_TASK_PRIORITY    5
 
 // Display handle
 static display_handle_t s_display_handle = {0};
@@ -56,9 +63,25 @@ typedef struct {
 
 static system_stats_t s_stats = {0};
 
+// MCP Server handle
+static mcp_server_handle_t s_mcp_server = NULL;
+static bool s_mcp_server_initialized = false;
+
 // Function declarations
 static void create_stats_display(void);
 static void update_stats_display(void);
+static void init_mcp_server(void);
+
+// C linkage functions for MCP tools
+extern "C" {
+    void* get_display_handle(void) {
+        return s_display_initialized ? (void*)&s_display_handle : NULL;
+    }
+    
+    uint32_t get_button_press_count(void) {
+        return s_stats.button_presses;
+    }
+}
 
 /**
  * @brief Print startup banner with chip information
@@ -396,9 +419,56 @@ static void init_nvs(void)
 }
 
 /**
+ * @brief Initialize MCP server
+ */
+static void init_mcp_server(void)
+{
+    ESP_LOGI(TAG, "Initializing simple MCP server...");
+    
+    // Get default configuration
+    mcp_server_config_t config;
+    esp_err_t ret = mcp_server_get_default_config(&config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get MCP server default config: %s", esp_err_to_name(ret));
+        return;
+    }
+    
+    // Configure server
+    config.task_priority = MCP_SERVER_TASK_PRIORITY;
+    config.enable_echo_tool = true;
+    config.enable_display_tool = true;
+    config.enable_gpio_tool = true;
+    config.enable_system_tool = true;
+    
+    // Initialize server
+    ret = mcp_server_init(&config, &s_mcp_server);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize MCP server: %s", esp_err_to_name(ret));
+        return;
+    }
+    
+    // Start server
+    ret = mcp_server_start(s_mcp_server);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start MCP server: %s", esp_err_to_name(ret));
+        mcp_server_deinit(s_mcp_server);
+        s_mcp_server = NULL;
+        return;
+    }
+    
+    s_mcp_server_initialized = true;
+    ESP_LOGI(TAG, "Simple MCP server initialized and started successfully");
+    ESP_LOGI(TAG, "MCP Tools available:");
+    ESP_LOGI(TAG, "  - echo: Echo back input parameters");
+    ESP_LOGI(TAG, "  - display_control: Control ST7789 display");
+    ESP_LOGI(TAG, "  - gpio_control: Control LED and read button");
+    ESP_LOGI(TAG, "  - system_info: Get system information");
+}
+
+/**
  * @brief Application main entry point
  */
-void app_main(void)
+extern "C" void app_main(void)
 {
     // Print startup information
     print_startup_banner();
@@ -411,6 +481,9 @@ void app_main(void)
 
     // Initialize display
     init_display();
+
+    // Initialize MCP server
+    init_mcp_server();
 
     // Create and start tasks
     ESP_LOGI(TAG, "Starting application tasks...");
@@ -459,7 +532,7 @@ void app_main(void)
         }
     }
 
-    ESP_LOGI(TAG, "ESP32-C6 firmware started successfully!");
+    ESP_LOGI(TAG, "ESP32-C6 firmware with TinyMCP started successfully!");
     ESP_LOGI(TAG, "Press the user button (GPIO%d) to display system status", USER_BUTTON_GPIO);
     ESP_LOGI(TAG, "Hold the button for 5 seconds to perform factory reset");
     ESP_LOGI(TAG, "Status LED (GPIO%d) indicates system health:", STATUS_LED_GPIO);
@@ -471,6 +544,13 @@ void app_main(void)
         ESP_LOGI(TAG, "Display updates every second, button press refreshes stats");
     } else {
         ESP_LOGW(TAG, "Display initialization failed - running without display");
+    }
+    if (s_mcp_server_initialized) {
+        ESP_LOGI(TAG, "Simple MCP Server: Ready for JSON-RPC commands");
+        ESP_LOGI(TAG, "Send JSON-RPC requests to control display, GPIO, and get system info");
+        ESP_LOGI(TAG, "Example: {\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1}");
+    } else {
+        ESP_LOGW(TAG, "MCP server initialization failed - running without MCP support");
     }
 
     // Main task can exit, FreeRTOS will continue running the created tasks

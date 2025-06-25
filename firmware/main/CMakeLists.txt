@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "firmware.c"
+    SRCS "firmware.cpp"
     INCLUDE_DIRS "."
     REQUIRES
         # Core system components
@@ -45,4 +45,7 @@ idf_component_register(
         # Display component
         display
         lvgl
+
+        # TinyMCP component
+        tinymcp
 )
